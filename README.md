@@ -12,7 +12,7 @@ A serverless Telegram bot that reads a Google Sheet daily, checks which tasks ar
 Vercel Cron (daily 00:00 UTC / 08:00 MYT)
     |
     v
-/api/cron (Python serverless function)
+/api/index (Python serverless function)
     |
     +--> Google Sheets API (gspread) -- reads task rows
     +--> Telegram Bot API (HTTP POST) -- sends summary to group
@@ -156,7 +156,7 @@ The output is a long string of characters. Copy it — this is your `GOOGLE_CRED
 ### 6. Verify Cron is Active
 
 1. In Vercel dashboard, go to your project → **Cron Jobs**
-2. You should see one job: `0 0 * * *` at path `/api/cron`
+2. You should see one job: `0 0 * * *` at path `/api/index`
 3. Status should show: **Active**
 
 ### 7. Test It
@@ -165,7 +165,7 @@ To manually trigger the bot without waiting for the cron:
 
 ```bash
 curl -H "x-vercel-cron-schedule: 0 0 * * *" \
-     https://YOUR_PROJECT.vercel.app/api/cron
+     https://YOUR_PROJECT.vercel.app/api/index
 ```
 
 You can also trigger it from Vercel's Cron Jobs dashboard.
@@ -179,7 +179,7 @@ Check your Telegram group — you should see the first reminder message.
 ### Cron Schedule
 
 - **08:00 AM MYT (Asia/Kuala Lumpur)** = **00:00 UTC** every day
-- Vercel cron triggers a GET request to `/api/cron`
+- Vercel cron triggers a GET request to `/api/index`
 - Precision: triggers between 08:00–08:59 MYT (Vercel Hobby precision is ±59 min)
 
 ### Sheet Reading Logic
@@ -244,7 +244,7 @@ Example: to alert only when 3 or fewer days remain:
 
 ### Security
 
-The cron endpoint (`/api/cron`) checks for the `x-vercel-cron-schedule` header that Vercel attaches to every cron-triggered request. External requests (from browsers) receive a `403 Forbidden` response.
+The cron endpoint (`/api/index`) checks for the `x-vercel-cron-schedule` header that Vercel attaches to every cron-triggered request. External requests (from browsers) receive a `403 Forbidden` response.
 
 ### Failsafe / Removing the Bot
 
@@ -306,7 +306,7 @@ $env:GOOGLE_CREDENTIALS_B64="your_base64_string"
 # Run the function logic directly
 python -c "
 import json, os
-from api.cron import validate_env, fetch_due_rows, build_message, send_telegram_message
+from api.index import validate_env, fetch_due_rows, build_message, send_telegram_message
 validate_env()
 rows = fetch_due_rows()
 msg = build_message(rows)
