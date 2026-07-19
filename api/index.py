@@ -51,7 +51,24 @@ def fetch_due_rows():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID)
     worksheet = sheet.worksheet(SHEET_TAB)
-    records = worksheet.get_all_records()
+    all_values = worksheet.get_all_values()
+    if not all_values:
+        logger.warning('Sheet "%s" is empty', SHEET_TAB)
+        return []
+
+    raw_headers = all_values[0]
+    header_indices = {}
+    for idx, h in enumerate(raw_headers):
+        key = str(h).strip()
+        if key and key not in header_indices:
+            header_indices[key] = idx
+
+    records = []
+    for row in all_values[1:]:
+        record = {}
+        for key, idx in header_indices.items():
+            record[key] = row[idx] if idx < len(row) else ''
+        records.append(record)
 
     logger.info('Read %d rows from sheet "%s"', len(records), SHEET_TAB)
 
