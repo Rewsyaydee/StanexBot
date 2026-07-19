@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 TRIGGER_DAYS = int(os.getenv('TRIGGER_DAYS', '7'))
+HEADER_ROW = int(os.getenv('HEADER_ROW', '1'))
 SHEET_ID = os.getenv('SHEET_ID', '')
 SHEET_TAB = os.getenv('SHEET_TAB', '')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
@@ -56,7 +57,13 @@ def fetch_due_rows():
         logger.warning('Sheet "%s" is empty', SHEET_TAB)
         return []
 
-    raw_headers = all_values[0]
+    header_idx = HEADER_ROW - 1
+    if header_idx >= len(all_values):
+        logger.error('HEADER_ROW=%d but sheet only has %d rows',
+                     HEADER_ROW, len(all_values))
+        return []
+
+    raw_headers = all_values[header_idx]
     header_indices = {}
     for idx, h in enumerate(raw_headers):
         key = str(h).strip()
@@ -64,13 +71,14 @@ def fetch_due_rows():
             header_indices[key] = idx
 
     records = []
-    for row in all_values[1:]:
+    for row in all_values[header_idx + 1:]:
         record = {}
         for key, idx in header_indices.items():
             record[key] = row[idx] if idx < len(row) else ''
         records.append(record)
 
-    logger.info('Read %d rows from sheet "%s"', len(records), SHEET_TAB)
+    logger.info('Read %d rows from sheet "%s" (header row %d)',
+                len(records), SHEET_TAB, HEADER_ROW)
     logger.info('Sheet headers found: %s', sorted(header_indices.keys()))
     logger.info('Looking for columns: %s', [COL_DUE_DATE, COL_COUNTDOWN,
                 COL_ACTIONS, COL_PIC, COL_PROGRESS])
@@ -90,7 +98,7 @@ def fetch_due_rows():
     first_completed = None
     first_outside = None
 
-    for i, row in enumerate(records, start=2):
+    for i, row in enumerate(records, start=HEADER_ROW + 1):
         try:
             actions = str(row.get(COL_ACTIONS, '')).strip()
             if not actions:

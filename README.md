@@ -181,6 +181,7 @@ The output is a long string — this is your `GOOGLE_CREDENTIALS_B64`.
    | `SHEET_TAB` | The exact tab name, case-sensitive (Step 3.5) |
    | `GOOGLE_CREDENTIALS_B64` | The base64-encoded service account JSON (Step 4) |
    | `TRIGGER_DAYS` | *(Optional)* Number of days window. Default: `7` |
+   | `HEADER_ROW` | *(Optional)* Row number of column headers. Default: `1` |
 
 6. Click **Deploy**.
 
@@ -246,6 +247,15 @@ Set `TRIGGER_DAYS` in your Vercel environment variables to change how far ahead 
 | `7` | *(Default)* Alerts for the week ahead |
 | `14` | Alerts for the coming fortnight |
 | `30` | Alerts for the month ahead |
+
+### Specifying the Header Row
+
+If your sheet has title rows, blank rows, or merged cells before the actual table (e.g., headers start at row 8), set `HEADER_ROW`:
+
+| `HEADER_ROW` | Behaviour |
+|---|---|
+| `1` | *(Default)* Column headers are in row 1 |
+| `8` | Column headers are in row 8 (data starts at row 9) |
 
 ### Changing the Schedule
 
