@@ -71,25 +71,50 @@ def fetch_due_rows():
         records.append(record)
 
     logger.info('Read %d rows from sheet "%s"', len(records), SHEET_TAB)
+    logger.info('Sheet headers found: %s', sorted(header_indices.keys()))
+    logger.info('Looking for columns: %s', [COL_DUE_DATE, COL_COUNTDOWN,
+                COL_ACTIONS, COL_PIC, COL_PROGRESS])
+
+    missing_cols = [c for c in [COL_DUE_DATE, COL_COUNTDOWN,
+                    COL_ACTIONS, COL_PIC, COL_PROGRESS]
+                    if c not in header_indices]
+    if missing_cols:
+        logger.error('MISSING expected columns in sheet: %s', missing_cols)
 
     due_rows = []
+    skip_blank_actions = 0
+    skip_non_numeric = 0
+    skip_completed = 0
+    skip_outside_window = 0
+    first_non_numeric = None
+    first_completed = None
+    first_outside = None
 
     for i, row in enumerate(records, start=2):
         try:
             actions = str(row.get(COL_ACTIONS, '')).strip()
             if not actions:
+                skip_blank_actions += 1
                 continue
 
             countdown_raw = row.get(COL_COUNTDOWN)
             try:
                 countdown = float(countdown_raw)
             except (TypeError, ValueError):
-                logger.warning('Row %d: non-numeric countdown "%s", skipping',
-                               i, countdown_raw)
+                skip_non_numeric += 1
+                if first_non_numeric is None and i <= 5:
+                    first_non_numeric = (i, countdown_raw)
+                elif skip_non_numeric <= 5:
+                    logger.warning(
+                        'Row %d: non-numeric countdown "%s", skipping',
+                        i, countdown_raw)
                 continue
 
             progress = str(row.get(COL_PROGRESS, '')).strip()
             if progress.upper() == 'COMPLETED':
+                skip_completed += 1
+                if first_completed is None:
+                    first_completed = (i, actions)
                 continue
 
             if 0 <= countdown < TRIGGER_DAYS:
@@ -108,10 +133,29 @@ def fetch_due_rows():
                     'countdown': countdown_disp,
                     'progress': progress if progress else '(no status)',
                 })
+            else:
+                skip_outside_window += 1
+                if first_outside is None:
+                    first_outside = (i, actions, countdown)
 
         except Exception:
             logger.error('Row %d: unexpected error', i, exc_info=True)
             continue
+
+    logger.info('Skip summary: blank_actions=%d, non_numeric=%d, '
+                'completed=%d, outside_window=%d',
+                skip_blank_actions, skip_non_numeric,
+                skip_completed, skip_outside_window)
+    if first_non_numeric:
+        logger.info('First non-numeric countdown: row %d raw="%s"',
+                    first_non_numeric[0], first_non_numeric[1])
+    if first_completed:
+        logger.info('First completed row: row %d action="%s"',
+                    first_completed[0], first_completed[1])
+    if first_outside:
+        logger.info('First outside-window row: row %d action="%s" '
+                    'countdown=%s',
+                    first_outside[0], first_outside[1], first_outside[2])
 
     logger.info('Found %d row(s) due within %d days',
                 len(due_rows), TRIGGER_DAYS)
