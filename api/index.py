@@ -121,39 +121,46 @@ def fetch_due_rows():
 def build_message(due_rows):
     if not due_rows:
         return (
-            "PREPTECH DAILY REMINDER\n"
+            "StanexBot Daily Check-in\n"
             "\n"
-            "All tasks on track - no deadlines in the next "
-            f"{TRIGGER_DAYS} days.\n"
+            "All clear! No tasks are due in the next "
+            f"{TRIGGER_DAYS} days. The team is on top of everything.\n"
             "\n"
             "---\n"
-            "Sent by PrepBot via Vercel Cron"
+            "This is an automated message from StanexBot"
         )
 
+    header = ("StanexBot Daily Check-in" if len(due_rows) <= 2
+              else f"StanexBot Daily Check-in - {len(due_rows)} tasks need attention")
+
     lines = [
-        "PREPTECH DAILY REMINDER",
+        header,
         "",
-        f"{len(due_rows)} task(s) due within {TRIGGER_DAYS} days:",
+        f"{len(due_rows)} task(s) approaching deadline in the next {TRIGGER_DAYS} days:",
         "",
     ]
 
     for i, row in enumerate(due_rows, start=1):
         days = ("1 day" if row['countdown'] == 1
                 else f"{row['countdown']} days")
+        urgency = "URGENT" if row['countdown'] <= 2 else ""
         detail = []
         if row['pic']:
             detail.append(f"PIC: {row['pic']}")
         if row['due_date']:
             detail.append(f"Due: {row['due_date']}")
-        detail.append(f"{days} left")
-        detail.append(f"[{row['progress']}]")
+        detail.append(f"{days} remaining")
+        status_tag = f"[{row['progress']}]"
+        if urgency:
+            status_tag = f"[{row['progress']}]  {urgency}"
+        detail.append(status_tag)
 
-        lines.append(f"{i}) {row['actions']}")
-        lines.append(f"   {' | '.join(detail)}")
+        lines.append(f"{i}. {row['actions']}")
+        lines.append(f"   {'  |  '.join(detail)}")
         lines.append("")
 
     lines.append("---")
-    lines.append("Sent by PrepBot via Vercel Cron")
+    lines.append("This is an automated message from StanexBot")
 
     return '\n'.join(lines)
 

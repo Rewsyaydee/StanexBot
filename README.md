@@ -1,311 +1,370 @@
-# PrepBot - PrepTech Daily WhatsApp (Telegram) Reminder Bot
+# StanexBot
 
-A serverless Telegram bot that reads a Google Sheet daily, checks which tasks are due within 7 days, and sends a summary reminder to a Telegram group.
+**Automated daily task deadline reminders for your team, delivered straight to Telegram.**
 
-**Runs on Vercel (free tier). No Docker, no browser, no session management.**
+StanexBot reads your team's project tracker in Google Sheets every morning at 08:00 AM (MYT), identifies tasks approaching their deadline, and posts a clean summary to your Telegram group so nothing slips through the cracks.
+
+> **Free to run.** Deployed on Vercel's Hobby tier. No servers, no Docker, no maintenance.
+
+---
+
+## Table of Contents
+
+- [How It Works](#how-it-works)
+- [What You'll Need](#what-youll-need)
+- [Setup Guide](#setup-guide)
+  - [1. Create a Telegram Bot](#1-create-a-telegram-bot)
+  - [2. Set Up the Telegram Group](#2-set-up-the-telegram-group)
+  - [3. Configure Google Sheets Access](#3-configure-google-sheets-access)
+  - [4. Encode Your Credentials](#4-encode-your-credentials)
+  - [5. Deploy to Vercel](#5-deploy-to-vercel)
+  - [6. Verify & Test](#6-verify--test)
+- [How the Logic Works](#how-the-logic-works)
+- [Configuration Options](#configuration-options)
+- [Message Examples](#message-examples)
+- [Troubleshooting](#troubleshooting)
+- [Architecture](#architecture)
+- [Local Development](#local-development)
+
+---
+
+## How It Works
+
+```
+Every morning at 08:00 AM MYT (00:00 UTC)
+
+  Vercel Cron wakes up
+        |
+        v
+  Python function runs (~3 seconds)
+        |
+        +--> Reads your Google Sheet via Google Sheets API
+        +--> Filters rows where deadline is 7 days or closer
+        +--> Skips rows already marked COMPLETED
+        |
+        v
+  Posts a formatted summary to your Telegram group
+        |
+        v
+  Function exits. Zero cost until tomorrow.
+```
+
+- No browser. No Chrome. No Docker. No Xvfb.
+- Sessionless. Credentials live in Vercel environment variables.
+- Runs in ~3 seconds. Costs $0/month on Vercel's free tier.
+
+---
+
+## What You'll Need
+
+| Resource | Purpose |
+|---|---|
+| A **GitHub** account | Hosts the source code |
+| A **Vercel** account (free Hobby plan) | Deploys and runs the scheduled function |
+| A **Telegram** account | Creates the bot and manages the group |
+| A **Google Cloud** account (free tier) | Provides API access to your Google Sheet |
+| Your Google Sheet | The task tracker StanexBot reads from |
+
+---
+
+## Setup Guide
+
+### 1. Create a Telegram Bot
+
+1. Open Telegram and message **@BotFather**.
+2. Send `/newbot` and follow the prompts:
+   - **Display name**: `StanexBot` (or any name you prefer)
+   - **Username**: Must be unique and end in `bot` (e.g., `stanex_reminder_bot`)
+3. BotFather will reply with an **access token**. Save this securely.
+   ```
+   Use this token to access the HTTP API:
+   8825280276:AAEOyzUz3YRxJBHSKLWMJxSamrNSPFqusv0
+   ```
+
+### 2. Set Up the Telegram Group
+
+1. In Telegram, create a **New Group** for your team.
+2. Add at least one other person (Telegram requires 2+ members for a group).
+3. Add the bot to the group:
+   - Open group info → **Add Members** → search for your bot's username.
+   - **Promote the bot to Administrator** so it can post messages.
+4. Send any message in the group (e.g., "hello").
+5. Retrieve the group chat ID by visiting this URL in your browser:
+   ```
+   https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+   ```
+6. In the JSON response, find `"chat":{"id":`. It will be a **negative number** (e.g., `-1001234567890`). Copy the full value, including the minus sign.
+
+### 3. Configure Google Sheets Access
+
+#### 3.1. Create a Google Cloud Project
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com).
+2. Click the project dropdown (top-left) → **New Project**.
+3. Name it `StanexBot` → **Create**.
+
+#### 3.2. Enable the Sheets API
+
+1. Navigate to [APIs & Services > Library](https://console.cloud.google.com/apis/library).
+2. Search for **Google Sheets API** → select it → click **Enable**.
+
+> **Important:** This is the most commonly missed step. If you skip it, the bot will fail with a `403` error.
+
+#### 3.3. Create a Service Account
+
+1. Go to [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials).
+2. Click **+ Create Credentials** → **Service Account**.
+3. Name: `stanexbot-sheets` → **Done**.
+4. Click the newly created service account email in the list.
+5. Switch to the **Keys** tab → **Add Key** → **Create New Key** → **JSON**.
+6. A `.json` file downloads to your computer. Keep it safe — this is your key.
+
+#### 3.4. Share Your Sheet with the Service Account
+
+1. Open your Google Sheet in the browser.
+2. Click **Share** (top-right corner).
+3. Paste the service account email address from the JSON file (looks like `stanexbot-sheets@<project-id>.iam.gserviceaccount.com`).
+4. Set permission to **Editor**.
+5. Click **Send**.
+
+#### 3.5. Locate Your Sheet ID and Tab Name
+
+- **Sheet ID**: Open your sheet. The URL will look like:
+  ```
+  https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz1234567890/edit
+  ```
+  The long string between `/d/` and `/edit` is your Sheet ID.
+
+- **Tab Name**: The exact text on the tab at the bottom of your sheet (e.g., `Plan of Action`). This is case-sensitive.
+
+### 4. Encode Your Credentials
+
+Vercel serverless functions have no persistent filesystem, so the Google service account JSON must be stored as an environment variable. Encode it to base64:
+
+**Windows (PowerShell):**
+```powershell
+[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content -Raw -Path "stanexbot-xxxxx.json"))) | Set-Clipboard
+```
+
+**Mac / Linux:**
+```bash
+base64 -w 0 stanexbot-xxxxx.json
+```
+
+The output is a long string — this is your `GOOGLE_CREDENTIALS_B64`.
+
+### 5. Deploy to Vercel
+
+1. **Push the repository to GitHub** (if you haven't already):
+   ```bash
+   git init
+   git add -A
+   git commit -m "Initial commit - StanexBot"
+   git remote add origin https://github.com/YOUR_USERNAME/stanexbot.git
+   git branch -M main
+   git push -u origin main
+   ```
+
+2. Log in to [Vercel](https://vercel.com) and click **New Project**.
+
+3. Import the `stanexbot` repository.
+
+4. Vercel automatically detects Python — no build command or framework configuration needed.
+
+5. In the **Environment Variables** section, add all of the following:
+
+   | Variable | Description |
+   |---|---|
+   | `TELEGRAM_BOT_TOKEN` | The token from @BotFather (Step 1) |
+   | `GROUP_CHAT_ID` | The negative group ID from `getUpdates` (Step 2) |
+   | `SHEET_ID` | The ID from your sheet URL (Step 3.5) |
+   | `SHEET_TAB` | The exact tab name, case-sensitive (Step 3.5) |
+   | `GOOGLE_CREDENTIALS_B64` | The base64-encoded service account JSON (Step 4) |
+   | `TRIGGER_DAYS` | *(Optional)* Number of days window. Default: `7` |
+
+6. Click **Deploy**.
+
+### 6. Verify & Test
+
+1. In your Vercel project dashboard, go to the **Cron Jobs** tab. You should see one entry:
+   - **Schedule**: `0 0 * * *` (midnight UTC = 08:00 AM MYT)
+   - **Path**: `/api/index`
+   - **Status**: Active
+
+2. To test immediately, run this in your terminal:
+   ```bash
+   curl -H "x-vercel-cron-schedule: 0 0 * * *" \
+        https://YOUR_PROJECT_NAME.vercel.app/api/index
+   ```
+
+3. Check your Telegram group — StanexBot should post its first message.
+
+---
+
+## How the Logic Works
+
+### Sheet Column Requirements
+
+StanexBot expects the following **exact** header names in row 1 of your sheet:
+
+| Header | Content |
+|---|---|
+| `Due Date` | The task's deadline date |
+| `Countdown (Days)` | Number of days remaining *(must be pre-computed by a sheet formula)* |
+| `ACTIONS` | Task name or description |
+| `PIC` | Person in charge / assignee |
+| `PROGRESS` | Current status (e.g., `In Progress`, `Pending`, `COMPLETED`) |
+
+> **Tip:** Rename columns in your sheet to match these headers exactly. The match is case-sensitive.
+
+### Trigger Rules
+
+A task appears in the daily message when **both** conditions are true:
+
+1. `Countdown (Days)` is a valid number **and** falls in the range `0 <= Countdown < TRIGGER_DAYS`
+2. `PROGRESS` is **not** `COMPLETED` (case-insensitive)
+
+### Edge Cases Handled
+
+- **Empty or blank rows**: skipped automatically.
+- **Non-numeric countdown values**: logged as a warning, the row is skipped.
+- **Duplicate column headers**: resolved by using the first occurrence.
+- **Missing columns**: treated as empty — the row is skipped if `ACTIONS` is blank.
+- **API failures**: logged with full traceback in Vercel's log stream.
+
+---
+
+## Configuration Options
+
+### Custom Trigger Window
+
+Set `TRIGGER_DAYS` in your Vercel environment variables to change how far ahead StanexBot looks. Examples:
+
+| `TRIGGER_DAYS` | Behaviour |
+|---|---|
+| `3` | Alerts only when 3 or fewer days remain |
+| `7` | *(Default)* Alerts for the week ahead |
+| `14` | Alerts for the coming fortnight |
+| `30` | Alerts for the month ahead |
+
+### Changing the Schedule
+
+Edit `vercel.json` and update the cron expression. All times are UTC.
+
+| Time (MYT) | UTC | Cron Expression |
+|---|---|---|
+| 08:00 AM | 00:00 | `0 0 * * *` |
+| 10:00 AM | 02:00 | `0 2 * * *` |
+| 05:00 PM | 09:00 | `0 9 * * *` |
+
+After editing, redeploy to apply.
+
+### Security Notes
+
+- The `/api/index` endpoint checks for the `x-vercel-cron-schedule` header that Vercel attaches to every cron-triggered request. External browser requests receive `403 Forbidden`.
+- All credentials are stored as Vercel environment variables. Nothing sensitive is committed to the repository.
+- To completely disable the bot: pause or delete the cron job in Vercel, or remove the bot from your Telegram group.
+
+---
+
+## Message Examples
+
+### When tasks are approaching their deadline
+
+```
+StanexBot Daily Check-in - 3 tasks need attention
+
+3 task(s) approaching deadline in the next 7 days:
+
+1. Submit quarterly financial report
+   PIC: Ahmad  |  Due: 2026-07-25  |  3 days remaining  |  [In Progress]
+
+2. Client presentation deck
+   PIC: Siti  |  Due: 2026-07-23  |  1 day remaining  |  [Pending]
+
+3. Code review for sprint #12
+   PIC: Raj  |  Due: 2026-07-26  |  4 days remaining  |  [In Progress]
+
+---
+This is an automated message from StanexBot
+```
+
+### When everything is on track
+
+```
+StanexBot Daily Check-in
+
+All clear! No tasks are due in the next 7 days. The team is on top of everything.
+
+---
+This is an automated message from StanexBot
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely Cause & Fix |
+|---|---|
+| `Missing env vars` error | One or more environment variables are not set in Vercel. Double-check all 5 required variables. |
+| `APIError: [403]` from Google | The Sheets API is not enabled for your Google Cloud project. See Step 3.2. |
+| `PermissionError` | The service account email has not been granted access to the sheet. See Step 3.4. |
+| `header row is not unique` | Your sheet has duplicate column headers. StanexBot handles this automatically by using the first occurrence. |
+| `non-numeric countdown` warning | A cell in the `Countdown (Days)` column contains text or is empty. The bot skips that row safely. |
+| Telegram message not appearing | Check: (1) Bot is an admin in the group? (2) Chat ID includes the minus sign? (3) Bot token is correct? |
+| Cron job not running | In Vercel Dashboard → Cron Jobs: is the job active? Check Vercel Logs for runtime errors. |
+| `403 Forbidden` on manual curl | You must include the `x-vercel-cron-schedule` header. See the test command in Step 6. |
+| Module not found | Verify `requirements.txt` is committed to the repo. Vercel runs `pip install` from it during build. |
+| Message is empty | Check that your sheet's header row matches exactly: `Due Date`, `Countdown (Days)`, `ACTIONS`, `PIC`, `PROGRESS`. |
 
 ---
 
 ## Architecture
 
 ```
-Vercel Cron (daily 00:00 UTC / 08:00 MYT)
-    |
-    v
-/api/index (Python serverless function)
-    |
-    +--> Google Sheets API (gspread) -- reads task rows
-    +--> Telegram Bot API (HTTP POST) -- sends summary to group
-    |
-    v
-  Exit (scales to zero)
+  Google Sheets              Vercel (Hobby Tier)              Telegram
+  ┌──────────────┐          ┌─────────────────────┐          ┌──────────┐
+  │ Task tracker │◄─read───│ /api/index (Python)  │──POST──►│ Group    │
+  │ (PrepTECH)   │  gspread │                      │  Bot API │ Chat     │
+  └──────────────┘          │ Trigger: Cron 0 0 * *│          └──────────┘
+                            │ (08:00 MYT daily)    │
+                            │                      │
+                            │ Env vars store all   │
+                            │ credentials & config │
+                            └─────────────────────┘
 ```
 
----
-
-## Prerequisites
-
-| What | Why |
+| Component | Technology |
 |---|---|
-| A **GitHub** account | To host the code and connect to Vercel |
-| A **Vercel** account (free Hobby plan) | To deploy and run the bot |
-| A **Telegram** account | To create the bot and the group |
-| A **Google Cloud** account (free) | To enable Sheets API and create a service account |
-| The PrepTech Google Sheet | Source of tasks/reminders |
+| Runtime | Vercel Serverless Functions (Python 3.12) |
+| Scheduling | Vercel Cron Jobs (free tier, once-daily) |
+| Google Sheets | `gspread` + Google Service Account |
+| Messaging | Telegram Bot API (`requests`) |
+| Configuration | Vercel Environment Variables |
+| Cost | **$0/month** (Hobby plan) |
 
 ---
 
-## Step-by-Step Setup
-
-### 1. Create the Telegram Bot
-
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot` to BotFather
-3. Follow the prompts:
-   - Name: `PrepTech Reminder` (or any display name)
-   - Username: `preptech_reminder_bot` (must end with `bot`, must be unique)
-4. BotFather replies with a **token** — copy it and save it somewhere safe.
-   ```
-   Use this token to access the HTTP API:
-   1234567890:AAFbcdEfghIJklmnOPqrstUVwxyz-ABCdefg
-   ```
-
-### 2. Create the Telegram Group & Get the Chat ID
-
-1. In Telegram, create a **New Group**
-2. Add at least **one other person** (Telegram groups need 2+ members)
-3. Add your bot to the group:
-   - Open the group → tap group name → **Add Members**
-   - Search for your bot's username (e.g., `@preptech_reminder_bot`)
-   - **Promote the bot to admin** (so it can send messages):
-     - Group Info → Administrators → Add Admin → select your bot
-4. Send any message in the group (e.g., "test")
-5. Open your browser and visit this URL (replace `YOUR_BOT_TOKEN`):
-   ```
-   https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates
-   ```
-6. Look for `"chat":{"id":` in the response. It will be a **negative number** like `-1001234567890`.
-   ```json
-   {
-     "ok": true,
-     "result": [{
-       "message": {
-         "chat": {
-           "id": -1001234567890,
-           "title": "PrepTech Team"
-         }
-       }
-     }]
-   }
-   ```
-7. Copy the chat ID (including the minus sign). This is your `GROUP_CHAT_ID`.
-
-### 3. Set Up Google Sheets API
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. **Create a new project** (or select an existing one):
-   - Click the project dropdown at the top → **New Project**
-   - Name: `PrepBot` → Create
-3. **Enable the Google Sheets API**:
-   - Go to [APIs & Services > Library](https://console.cloud.google.com/apis/library)
-   - Search for **Google Sheets API** → Click it → **Enable**
-4. **Create a Service Account**:
-   - Go to [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials)
-   - Click **+ Create Credentials** → **Service Account**
-   - Name: `prepbot-sheets` → **Done**
-   - After creation, click the service account email
-   - Go to the **Keys** tab → **Add Key** → **Create New Key** → **JSON**
-   - A JSON file downloads to your computer (e.g., `prepbot-xxxxx-xxxxx.json`)
-5. **Share your Google Sheet** with the service account:
-   - Open the PrepTech Google Sheet in your browser
-   - Click **Share** (top-right)
-   - Paste the service account email (looks like `prepbot-sheets@prepbot-xxxxx.iam.gserviceaccount.com`)
-   - Give **Editor** access (the bot only reads, but Editor is needed for the API)
-   - Click **Send**
-6. **Get your Sheet ID**:
-   - Open your Google Sheet
-   - The URL looks like: `https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz1234567890/edit`
-   - The long string between `/d/` and `/edit` is your **Sheet ID**
-   - Copy this string
-7. **Note your sheet tab name**:
-   - Look at the tab name at the bottom of your sheet (e.g., "Plan of Action" or "Sheet1")
-   - This is your `SHEET_TAB`
-
-### 4. Base64-Encode the Google Credentials
-
-Vercel serverless functions have no filesystem, so we encode the JSON into an environment variable.
-
-**On Windows (PowerShell):**
-```powershell
-[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes((Get-Content -Raw -Path "prepbot-xxxxx.json"))) | Set-Clipboard
-```
-
-**On Mac / Linux:**
-```bash
-base64 -w 0 prepbot-xxxxx.json
-```
-
-The output is a long string of characters. Copy it — this is your `GOOGLE_CREDENTIALS_B64`.
-
-### 5. Deploy to Vercel
-
-1. **Push this repo to GitHub**:
-   ```bash
-   git init
-   git add -A
-   git commit -m "Initial commit - PrepBot"
-   git remote add origin https://github.com/YOUR_USERNAME/stanexbot.git
-   git branch -M main
-   git push -u origin main
-   ```
-2. Go to [Vercel](https://vercel.com) → **New Project**
-3. Import your GitHub repo (`stanexbot`)
-4. Vercel auto-detects Python. No build command or framework needed.
-5. **Under Environment Variables, add these:**
-
-   | Variable | Value | Where to find it |
-   |---|---|---|
-   | `TELEGRAM_BOT_TOKEN` | `1234567890:AAFbcd...` | Step 1 (BotFather) |
-   | `GROUP_CHAT_ID` | `-1001234567890` | Step 2 (getUpdates) |
-   | `SHEET_ID` | `1AbCdEfGh...` | Step 3.6 (Sheet URL) |
-   | `SHEET_TAB` | `Plan of Action` | Step 3.7 (tab name) |
-   | `GOOGLE_CREDENTIALS_B64` | `eyJ0eXBlIjoic2Vydmlj...` | Step 4 (base64 output) |
-
-6. Click **Deploy**
-
-### 6. Verify Cron is Active
-
-1. In Vercel dashboard, go to your project → **Cron Jobs**
-2. You should see one job: `0 0 * * *` at path `/api/index`
-3. Status should show: **Active**
-
-### 7. Test It
-
-To manually trigger the bot without waiting for the cron:
+## Local Development
 
 ```bash
-curl -H "x-vercel-cron-schedule: 0 0 * * *" \
-     https://YOUR_PROJECT.vercel.app/api/index
-```
-
-You can also trigger it from Vercel's Cron Jobs dashboard.
-
-Check your Telegram group — you should see the first reminder message.
-
----
-
-## How It Works
-
-### Cron Schedule
-
-- **08:00 AM MYT (Asia/Kuala Lumpur)** = **00:00 UTC** every day
-- Vercel cron triggers a GET request to `/api/index`
-- Precision: triggers between 08:00–08:59 MYT (Vercel Hobby precision is ±59 min)
-
-### Sheet Reading Logic
-
-The bot reads your Google Sheet and looks for columns with these exact headers:
-
-| Header | What it contains |
-|---|---|
-| `Due Date` | The task deadline date |
-| `Countdown (Days)` | Number of days left (must be pre-computed in the sheet) |
-| `ACTIONS` | Task name / description |
-| `PIC` | Person in charge / owner |
-| `PROGRESS` | Status (e.g. In Progress, Pending, COMPLETED) |
-
-**Trigger conditions (both must be true):**
-1. `Countdown (Days)` is a number AND `0 <= Countdown (Days) < 7`
-2. `PROGRESS` is NOT `COMPLETED` (case-insensitive)
-
-Blank rows and rows with non-numeric countdown values are safely skipped.
-
-### Message Format
-
-**When tasks are due:**
-```
-PREPTECH DAILY REMINDER
-
-3 task(s) due within 7 days:
-
-1) Submit quarterly report
-   PIC: Ahmad | Due: 2026-07-25 | 3 days left | [In Progress]
-
-2) Review pull requests
-   PIC: Siti | Due: 2026-07-22 | 1 day left | [Pending]
-
-3) Update CI pipeline
-   PIC: John | Due: 2026-07-24 | 2 days left | [In Progress]
-
----
-Sent by PrepBot via Vercel Cron
-```
-
-**When everything is on track:**
-```
-PREPTECH DAILY REMINDER
-
-All tasks on track - no deadlines in the next 7 days.
-
----
-Sent by PrepBot via Vercel Cron
-```
-
----
-
-## Configuration
-
-### Change the Trigger Window
-
-Set the `TRIGGER_DAYS` env var in Vercel. Default is `7`.
-
-Example: to alert only when 3 or fewer days remain:
-- Env var: `TRIGGER_DAYS` = `3`
-
-### Security
-
-The cron endpoint (`/api/index`) checks for the `x-vercel-cron-schedule` header that Vercel attaches to every cron-triggered request. External requests (from browsers) receive a `403 Forbidden` response.
-
-### Failsafe / Removing the Bot
-
-If you want to stop the bot:
-1. **Vercel**: Go to Cron Jobs → Pause or Delete the cron job
-2. **Telegram**: Remove the bot from the group
-3. **Telegram**: Send `/revoke` to @BotFather to revoke the token
-
----
-
-## Troubleshooting
-
-| Problem | Check |
-|---|---|
-| "Missing env vars" error | Verify all 5 env vars are set in Vercel > Settings > Environment Variables |
-| "403 Forbidden" | The `x-vercel-cron-schedule` header is missing — cron works, manual curl without header blocked (by design) |
-| "non-numeric countdown" warning | A row in the sheet has text in the Countdown column. Either fix the formula or the bot skips it safely. |
-| "Module not found: gspread" | Make sure `requirements.txt` is committed and Vercel ran `pip install` during deploy |
-| Telegram message not showing | (1) Bot is admin in the group? (2) Chat ID is correct and negative? (3) Token is correct? |
-| Google Sheets auth fails | (1) Credentials base64 is correct? (2) Sheet is shared with the service account email? (3) Sheets API is enabled? |
-| Sheet tab not found | The tab name in `SHEET_TAB` must match exactly (case-sensitive, include spaces) |
-| Cron not running | Check Vercel > Cron Jobs tab — is it active? Check Vercel > Logs for errors |
-| Message sent but empty | Check that column headers in your Sheet match EXACTLY: `Due Date`, `Countdown (Days)`, `ACTIONS`, `PIC`, `PROGRESS` |
-
----
-
-## Vercel Free Tier Notes
-
-- **100 cron jobs** per project (you use 1)
-- **Daily minimum interval** (matches your 08:00 once-daily schedule)
-- **±59 minute scheduling precision** (message arrives between 08:00–08:59 MYT)
-- **No cron job cost** — included in all plans
-- **Function costs are negligible** — ~3 seconds per invocation, well within free tier
-
----
-
-## Local Development (Optional)
-
-```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/stanexbot.git
+# Clone and set up
+git clone https://github.com/Rewsyaydee/stanexbot.git
 cd stanexbot
-
-# Create virtual environment
 python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Mac/Linux
+
+# Activate virtual environment
+venv\Scripts\activate     # Windows
+source venv/bin/activate   # Mac / Linux
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Set env vars for local testing
-$env:TELEGRAM_BOT_TOKEN="your_token"
-$env:GROUP_CHAT_ID="-1001234567890"
-$env:SHEET_ID="your_sheet_id"
-$env:SHEET_TAB="Plan of Action"
-$env:GOOGLE_CREDENTIALS_B64="your_base64_string"
+# Copy and fill in the environment file
+cp .env.example .env
 
-# Run the function logic directly
+# Test the full pipeline
 python -c "
-import json, os
 from api.index import validate_env, fetch_due_rows, build_message, send_telegram_message
 validate_env()
 rows = fetch_due_rows()
