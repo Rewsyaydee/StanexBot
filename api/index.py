@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import logging
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler
 
 import gspread
@@ -170,49 +171,92 @@ def fetch_due_rows():
     return due_rows
 
 
+NUMBER_EMOJI = ['0\u20e3', '1\ufe0f\u20e3', '2\ufe0f\u20e3',
+                '3\ufe0f\u20e3', '4\ufe0f\u20e3', '5\ufe0f\u20e3',
+                '6\ufe0f\u20e3', '7\ufe0f\u20e3', '8\ufe0f\u20e3',
+                '9\ufe0f\u20e3']
+
+LOGO = '\U0001f916'
+BELL = '\U0001f514'
+CLIPBOARD = '\U0001f4cb'
+CHECK = '\u2705'
+PERSON = '\U0001f464'
+CALENDAR = '\U0001f4c5'
+SIREN = '\U0001f6a8'
+WARNING = '\u26a0\ufe0f'
+CLOCK = '\u23f0'
+IN_PROGRESS = '\U0001f504'
+PENDING = '\u23f3'
+NOT_STARTED = '\u2b1c'
+CHART = '\U0001f4ca'
+EM_DASH = '\u2014'
+
+
+def progress_emoji(progress):
+    p = progress.lower()
+    if 'in progress' in p or 'ongoing' in p:
+        return IN_PROGRESS
+    if 'pending' in p:
+        return PENDING
+    if 'not started' in p:
+        return NOT_STARTED
+    return CHART
+
+
+def countdown_line(countdown):
+    cd = int(countdown)
+    if cd == 0:
+        return SIREN, 'Due today!'
+    if cd == 1:
+        return SIREN, '1 day remaining'
+    if cd <= 2:
+        return SIREN, f'{cd} days remaining'
+    if cd <= 5:
+        return WARNING, f'{cd} days remaining'
+    return CLOCK, f'{cd} days remaining'
+
+
 def build_message(due_rows):
+    myt = timezone(timedelta(hours=8))
+    now = datetime.now(myt)
+    date_str = f'{now.day} {now.strftime("%B %Y")}'
+    header = f'{BELL} StanexBot Daily Check-in {EM_DASH} {date_str}'
+
     if not due_rows:
         return (
-            "StanexBot Daily Check-in\n"
-            "\n"
-            "All clear! No tasks are due in the next "
-            f"{TRIGGER_DAYS} days. The team is on top of everything.\n"
-            "\n"
-            "---\n"
-            "This is an automated message from StanexBot"
+            f'{header}\n'
+            '\n'
+            f'{CHECK} All clear! No tasks are due in the next '
+            f'{TRIGGER_DAYS} days. Great job, team!\n'
+            '\n'
+            '---\n'
+            f'{LOGO} Automated by StanexBot'
         )
-
-    header = ("StanexBot Daily Check-in" if len(due_rows) <= 2
-              else f"StanexBot Daily Check-in - {len(due_rows)} tasks need attention")
 
     lines = [
         header,
-        "",
-        f"{len(due_rows)} task(s) approaching deadline in the next {TRIGGER_DAYS} days:",
-        "",
+        '',
+        (f'{CLIPBOARD} {len(due_rows)} task(s) approaching '
+         f'deadline in the next {TRIGGER_DAYS} days:'),
+        '',
     ]
 
     for i, row in enumerate(due_rows, start=1):
-        days = ("1 day" if row['countdown'] == 1
-                else f"{row['countdown']} days")
-        urgency = "URGENT" if row['countdown'] <= 2 else ""
-        detail = []
+        num = NUMBER_EMOJI[i] if i <= 9 else f'{i}.'
+        urgency, days_str = countdown_line(row['countdown'])
+        prog = progress_emoji(row['progress'])
+
+        lines.append(f'{num} {row["actions"]}')
         if row['pic']:
-            detail.append(f"PIC: {row['pic']}")
+            lines.append(f'    {PERSON} {row["pic"]}')
         if row['due_date']:
-            detail.append(f"Due: {row['due_date']}")
-        detail.append(f"{days} remaining")
-        status_tag = f"[{row['progress']}]"
-        if urgency:
-            status_tag = f"[{row['progress']}]  {urgency}"
-        detail.append(status_tag)
+            lines.append(f'    {CALENDAR} {row["due_date"]}')
+        lines.append(f'    {urgency} {days_str}')
+        lines.append(f'    {prog} {row["progress"]}')
+        lines.append('')
 
-        lines.append(f"{i}. {row['actions']}")
-        lines.append(f"   {'  |  '.join(detail)}")
-        lines.append("")
-
-    lines.append("---")
-    lines.append("This is an automated message from StanexBot")
+    lines.append('---')
+    lines.append(f'{LOGO} Automated by StanexBot')
 
     return '\n'.join(lines)
 

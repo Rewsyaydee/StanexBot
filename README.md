@@ -282,32 +282,41 @@ After editing, redeploy to apply.
 ### When tasks are approaching their deadline
 
 ```
-StanexBot Daily Check-in - 3 tasks need attention
+🔔 StanexBot Daily Check-in — 20 July 2026
 
-3 task(s) approaching deadline in the next 7 days:
+📋 3 task(s) approaching deadline in the next 16 days:
 
-1. Submit quarterly financial report
-   PIC: Ahmad  |  Due: 2026-07-25  |  3 days remaining  |  [In Progress]
+1️⃣ Draw up the digital floorplan
+    👤 SYEDI & MIZAN
+    📅 4 Aug 2026
+    ⚠️ 15 days remaining
+    🔄 In Progress
 
-2. Client presentation deck
-   PIC: Siti  |  Due: 2026-07-23  |  1 day remaining  |  [Pending]
+2️⃣ Submit quarterly report
+    👤 Ahmad
+    📅 25 Jul 2026
+    🚨 3 days remaining
+    📊 In Progress
 
-3. Code review for sprint #12
-   PIC: Raj  |  Due: 2026-07-26  |  4 days remaining  |  [In Progress]
+3️⃣ Review pull requests
+    👤 Siti
+    📅 22 Jul 2026
+    🚨 Due today!
+    ⏳ Pending
 
 ---
-This is an automated message from StanexBot
+🤖 Automated by StanexBot
 ```
 
 ### When everything is on track
 
 ```
-StanexBot Daily Check-in
+🔔 StanexBot Daily Check-in — 20 July 2026
 
-All clear! No tasks are due in the next 7 days. The team is on top of everything.
+✅ All clear! No tasks are due in the next 16 days. Great job, team!
 
 ---
-This is an automated message from StanexBot
+🤖 Automated by StanexBot
 ```
 
 ---
