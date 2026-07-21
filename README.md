@@ -78,7 +78,7 @@ Every morning at 08:00 AM MYT (00:00 UTC)
 3. BotFather will reply with an **access token**. Save this securely.
    ```
    Use this token to access the HTTP API:
-   8825280276:AAEOyzUz3YRxJBHSKLWMJxSamrNSPFqusv0
+   8812340276:AAEOyzUz1234JBHSKLW1234amrNSPFqusv0
    ```
 
 ### 2. Set Up the Telegram Group
